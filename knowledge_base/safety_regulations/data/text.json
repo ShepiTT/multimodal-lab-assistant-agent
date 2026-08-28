@@ -1,0 +1,20 @@
+{
+  "files": [
+    {
+      "id": "7d813e46",
+      "name": "安全规范.pdf",
+      "type": "文档",
+      "size": "7.0MB",
+      "chars": 18985,
+      "recall": 9,
+      "date": "2026-05-13 23:04:26",
+      "enabled": true,
+      "status": "completed",
+      "batch": "202605132304",
+      "chunks": 38
+    }
+  ],
+  "last_updated": "2026-05-31T15:03:17.141126Z",
+  "index_built": true,
+  "total_chunks": 38
+}

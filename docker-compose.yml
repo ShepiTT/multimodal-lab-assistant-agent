@@ -1,0 +1,20 @@
+services:
+  piston:
+    image: ghcr.io/engineer-man/piston
+    container_name: piston
+    ports:
+      - "2000:2000"
+    privileged: true
+    tmpfs:
+      - /piston/jobs:exec,uid=1000,gid=1000
+    restart: unless-stopped
+    volumes:
+      - piston-packages:/piston/packages
+    environment:
+      - PISTON_LOG_LEVEL=INFO
+      - PISTON_RUN_MEMORY_LIMIT=256000000
+      - PISTON_RUN_TIMEOUT=3000
+      - PISTON_INSTALL_DEFAULT_PACKAGES=python=3.10.0,javascript=18.15.0,java=15.0.2,c=10.2.0,cpp=10.2.0
+
+volumes:
+  piston-packages:

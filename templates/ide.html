@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Language Web IDE</title>
+    <!-- Monaco Editor -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --sidebar-bg: #f9f9f9;
+            --main-bg: #ffffff;
+            --text-primary: #1d1d1f;
+            --text-secondary: #86909c;
+            --border-color: #e5e6eb;
+            --accent-color: #0066ff;
+            --hover-bg: #f2f3f5;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: var(--text-primary);
+            overflow: hidden;
+        }
+
+        /* 工具栏 */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            background: var(--sidebar-bg);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .toolbar button {
+            padding: 8px 16px;
+            cursor: pointer;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .toolbar button:hover {
+            opacity: 0.9;
+        }
+
+        .toolbar select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            font-size: 14px;
+        }
+
+        /* 主容器 */
+        .main-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* 文件树 */
+        .file-tree {
+            width: 250px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        /* 编辑器容器 */
+        .editor-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #editor {
+            flex: 1;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        /* 控制台 */
+        .console-panel {
+            height: 200px;
+            background: #1e1e1e;
+            color: #fff;
+            font-family: Consolas, monospace;
+            overflow: auto;
+            padding: 10px;
+            font-size: 13px;
+        }
+
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 10px;
+            background: #2d2d2d;
+            border-bottom: 1px solid #404040;
+        }
+
+        .console-header button {
+            background: none;
+            border: none;
+            color: #9ca3af;
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .console-header button:hover {
+            color: #fff;
+        }
+
+        .output-line {
+            margin: 2px 0;
+        }
+
+        .output-error {
+            color: #ff6b6b;
+        }
+
+        .output-success {
+            color: #51cf66;
+        }
+
+        .output-info {
+            color: #74c0fc;
+        }
+    </style>
+</head>
+<body>
+    <!-- 工具栏 -->
+    <div class="toolbar">
+        <select id="language-select">
+            <option value="python" selected>Python</option>
+            <option value="javascript">JavaScript</option>
+            <option value="java">Java</option>
+            <option value="c">C</option>
+            <option value="cpp">C++</option>
+            <option value="go">Go</option>
+            <option value="rust">Rust</option>
+            <option value="typescript">TypeScript</option>
+        </select>
+        <button id="run-btn">▶ 运行</button>
+        <button id="save-btn">💾 保存</button>
+        <button id="new-file-btn">📄 新建文件</button>
+        <button id="theme-btn">🌓 切换主题</button>
+    </div>
+
+    <!-- 主容器 -->
+    <div class="main-container">
+        <!-- 文件树 -->
+        <div class="file-tree">
+            <h3 style="margin-bottom: 10px; font-size: 14px;">文件</h3>
+            <div id="file-list">
+                <!-- 文件列表将在这里动态生成 -->
+            </div>
+        </div>
+
+        <!-- 编辑器和控制台 -->
+        <div class="editor-container">
+            <div id="editor"></div>
+            <div>
+                <div class="console-header">
+                    <span>控制台输出</span>
+                    <div>
+                        <button id="clear-console-btn">清空</button>
+                        <button id="copy-output-btn">复制</button>
+                    </div>
+                </div>
+                <div class="console-panel" id="console-output">
+                    <div class="output-info">准备就绪，等待运行代码...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // IDE 状态
+        let editor = null;
+        let currentTheme = 'vs-dark';
+        let currentLanguage = 'python';
+        let sessionId = null;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', async () => {
+            await initMonacoEditor();
+            await initSession();
+            setupEventListeners();
+        });
+
+        // 初始化 Monaco Editor
+        async function initMonacoEditor() {
+            require.config({ 
+                paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' } 
+            });
+
+            return new Promise((resolve) => {
+                require(['vs/editor/editor.main'], function() {
+                    editor = monaco.editor.create(document.getElementById('editor'), {
+                        value: getDefaultCode('python'),
+                        language: 'python',
+                        theme: currentTheme,
+                        lineNumbers: 'on',
+                        automaticLayout: true
+                    });
+                    resolve();
+                });
+            });
+        }
+
+        // 获取默认代码
+        function getDefaultCode(language) {
+            const defaultCodes = {
+                python: `# Python 示例代码\nprint("Hello, Python Web IDE!")\n\nfor i in range(5):\n    print(f"循环次数: {i}")`,
+                javascript: `// JavaScript 示例\nconsole.log("Hello, Web IDE!");\n\nfor (let i = 0; i < 5; i++) {\n    console.log(\`循环次数: \${i}\`);\n}`,
+                java: `// Java 示例\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, Web IDE!");\n        \n        for (int i = 0; i < 5; i++) {\n            System.out.println("循环次数: " + i);\n        }\n    }\n}`,
+                c: `// C 示例\n#include <stdio.h>\n\nint main() {\n    printf("Hello, Web IDE!\\n");\n    \n    for (int i = 0; i < 5; i++) {\n        printf("循环次数: %d\\n", i);\n    }\n    \n    return 0;\n}`,
+                cpp: `// C++ 示例\n#include <iostream>\n\nint main() {\n    std::cout << "Hello, Web IDE!" << std::endl;\n    \n    for (int i = 0; i < 5; i++) {\n        std::cout << "循环次数: " << i << std::endl;\n    }\n    \n    return 0;\n}`,
+                go: `// Go 示例\npackage main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello, Web IDE!")\n    \n    for i := 0; i < 5; i++ {\n        fmt.Printf("循环次数: %d\\n", i)\n    }\n}`,
+                rust: `// Rust 示例\nfn main() {\n    println!("Hello, Web IDE!");\n    \n    for i in 0..5 {\n        println!("循环次数: {}", i);\n    }\n}`,
+                typescript: `// TypeScript 示例\nconsole.log("Hello, Web IDE!");\n\nfor (let i: number = 0; i < 5; i++) {\n    console.log(\`循环次数: \${i}\`);\n}`
+            };
+            return defaultCodes[language] || '';
+        }
+
+        // 初始化会话
+        async function initSession() {
+            try {
+                const response = await fetch('/api/ide/session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                sessionId = data.session_id;
+                console.log('会话已创建:', sessionId);
+            } catch (error) {
+                console.error('创建会话失败:', error);
+                appendOutput('⚠️ 创建会话失败，某些功能可能不可用', 'error');
+            }
+        }
+
+        // 设置事件监听
+        function setupEventListeners() {
+            // 运行按钮
+            document.getElementById('run-btn').addEventListener('click', runCode);
+            
+            // 保存按钮
+            document.getElementById('save-btn').addEventListener('click', saveFile);
+            
+            // 语言切换
+            document.getElementById('language-select').addEventListener('change', (e) => {
+                currentLanguage = e.target.value;
+                monaco.editor.setModelLanguage(editor.getModel(), currentLanguage);
+                editor.setValue(getDefaultCode(currentLanguage));
+            });
+            
+            // 主题切换
+            document.getElementById('theme-btn').addEventListener('click', () => {
+                currentTheme = currentTheme === 'vs-dark' ? 'vs-light' : 'vs-dark';
+                monaco.editor.setTheme(currentTheme);
+            });
+            
+            // 清空控制台
+            document.getElementById('clear-console-btn').addEventListener('click', clearConsole);
+            
+            // 复制输出
+            document.getElementById('copy-output-btn').addEventListener('click', copyOutput);
+        }
+
+        // 运行代码
+        async function runCode() {
+            const code = editor.getValue();
+            const language = currentLanguage;
+            
+            clearConsole();
+            appendOutput('⏳ 正在运行代码...', 'info');
+            
+            try {
+                const response = await fetch('/api/ide/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, language, session_id: sessionId })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    appendOutput(`✅ 运行成功 (${result.language} ${result.version})`, 'success');
+                    if (result.compile_output) {
+                        appendOutput(`\n编译输出:\n${result.compile_output}`, 'info');
+                    }
+                    if (result.output) {
+                        appendOutput(`\n输出:\n${result.output}`, 'success');
+                    }
+                    appendOutput(`\n⏱️ 执行时间: ${result.run_time}s`, 'info');
+                } else {
+                    appendOutput('❌ 运行失败', 'error');
+                    if (result.error) {
+                        appendOutput(`\n错误:\n${result.error}`, 'error');
+                    }
+                }
+            } catch (error) {
+                appendOutput(`❌ 网络错误: ${error.message}`, 'error');
+            }
+        }
+
+        // 保存文件
+        async function saveFile() {
+            appendOutput('💾 保存功能开发中...', 'info');
+        }
+
+        // 添加输出
+        function appendOutput(text, type = 'info') {
+            const consoleOutput = document.getElementById('console-output');
+            const line = document.createElement('div');
+            line.className = `output-line output-${type}`;
+            line.textContent = text;
+            consoleOutput.appendChild(line);
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+
+        // 清空控制台
+        function clearConsole() {
+            document.getElementById('console-output').innerHTML = '';
+        }
+
+        // 复制输出
+        function copyOutput() {
+            const text = document.getElementById('console-output').innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                appendOutput('✅ 已复制到剪贴板', 'success');
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+# === 环境变量 / 密钥 ===
+.env
+.env.local
+
+# === 毕业论文（不公开）===
+2201630208蓝江涛_本科教学实验室多模态智能问答智能体设计与实现.pdf
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# === 编辑器 / IDE ===
+.vscode/
+.idea/
+
+# === 运行期数据（上传文件、会话历史、语音、测试数据等）===
+/data/
+
+# === 知识库构建产物（可通过程序重新生成）===
+knowledge_base/*/index/
+knowledge_base/*/temp/
+knowledge_base/*/log/
+
+# === 日志 ===
+log/
+*.log
+
+# === 备份文件 ===
+backups/
+
+# === 操作系统 ===
+Thumbs.db
+.DS_Store

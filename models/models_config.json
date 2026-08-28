@@ -1,0 +1,221 @@
+{
+  "providers": [
+    {
+      "id": "aliyun_chat",
+      "name": "通义千问·文本",
+      "type": "llm",
+      "client": "openai-compatible",
+      "base_url": {
+        "env": "ALI_BASE_URL",
+        "default": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      },
+      "api_key_env": ["ALI_API_KEY", "DASHSCOPE_API_KEY"],
+      "models": [
+        {"id": "qwen-flash", "supports_stream": true, "default": true},
+        {"id": "qwen-turbo", "supports_stream": true},
+        {"id": "qwen-plus", "supports_stream": true}
+      ]
+    },
+    {
+      "id": "aliyun_vl",
+      "name": "通义千问·多模态",
+      "type": "vl",
+      "client": "openai-compatible",
+      "base_url": {
+        "env": "ALI_VL_BASE_URL",
+        "default": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      },
+      "api_key_env": ["ALI_VL_API_KEY", "DASHSCOPE_API_KEY"],
+      "models": [
+        {"id": "qwen-vl-plus", "supports_stream": true, "default": true},
+        {"id": "qwen-vl-max", "supports_stream": true}
+      ]
+    },
+    {
+      "id": "openai_chat",
+      "name": "ChatGPT",
+      "type": "llm",
+      "client": "openai",
+      "base_url": {
+        "env": "OPENAI_BASE_URL",
+        "default": "https://api.openai.com/v1"
+      },
+      "api_key_env": ["OPENAI_API_KEY"],
+      "models": [
+        {"id": "gpt-4o", "supports_stream": true, "default": true},
+        {"id": "gpt-4o-mini", "supports_stream": true},
+        {"id": "gpt-3.5-turbo", "supports_stream": true}
+      ]
+    },
+    {
+      "id": "deepseek",
+      "name": "深度求索",
+      "type": "llm",
+      "client": "openai-compatible",
+      "base_url": {
+        "env": "DEEPSEEK_BASE_URL",
+        "default": "https://api.deepseek.com"
+      },
+      "api_key_env": ["DEEPSEEK_API_KEY"],
+      "models": [
+        {"id": "deepseek-chat", "supports_stream": true, "default": true},
+        {"id": "deepseek-reasoner", "supports_stream": true}
+      ]
+    },
+    {
+      "id": "doubao",
+      "name": "火山方舟·豆包",
+      "type": "llm",
+      "client": "openai-compatible",
+      "base_url": {
+        "env": "ARK_BASE_URL",
+        "default": "https://ark.cn-beijing.volces.com/api/v3"
+      },
+      "api_key_env": ["ARK_API_KEY"],
+      "models": [
+        {"id": "doubao-seed-1-6-251015", "supports_stream": true, "default": true}
+      ]
+    },
+    {
+      "id": "doubao_vl",
+      "name": "火山方舟·豆包多模态",
+      "type": "vl",
+      "client": "openai-compatible",
+      "base_url": {
+        "env": "ARK_BASE_URL",
+        "default": "https://ark.cn-beijing.volces.com/api/v3"
+      },
+      "api_key_env": ["ARK_API_KEY"],
+      "models": [
+        {"id": "doubao-seed-1-6-vision-250815", "supports_stream": true, "default": true}
+      ]
+    },
+    {
+      "id": "local_qwen3",
+      "name": "本地 Qwen3-1.7B",
+      "type": "llm",
+      "client": "local",
+      "model_path": "D:/lxx_py/毕业设计/models/Qwen3-1.7B",
+      "requires_gpu": true,
+      "supports_stream": true,
+      "supports_think_tag": true,
+      "api_key_env": [],
+      "models": [
+        {"id": "local-qwen3-1.7b", "supports_stream": true, "default": true}
+      ]
+    },
+    {
+      "id": "local_qwen2_vl",
+      "name": "本地 Qwen2-VL-2B (多模态)",
+      "type": "vl",
+      "client": "local_vl",
+      "model_path": "Qwen/Qwen2-VL-2B-Instruct",
+      "requires_gpu": true,
+      "supports_stream": true,
+      "api_key_env": [],
+      "models": [
+        {"id": "local-qwen2-vl-2b", "supports_stream": true, "default": true}
+      ]
+    },
+    {
+      "id": "baidu_asr",
+      "name": "百度语音识别",
+      "type": "asr",
+      "client": "baidu",
+      "base_url": {
+        "default": "https://vop.baidu.com/server_api"
+      },
+      "api_key_env": ["BAIDU_API_KEY", "BAIDU_SECRET_KEY"],
+      "models": [
+        {"id": "baidu-asr-v1", "default": true}
+      ]
+    },
+    {
+      "id": "local_asr",
+      "name": "本地语音识别 (FunASR)",
+      "type": "asr",
+      "client": "local",
+      "model_path": "iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+      "requires_gpu": true,
+      "api_key_env": [],
+      "models": [
+        {"id": "funasr-paraformer", "default": true}
+      ]
+    },
+    {
+      "id": "baidu_ocr",
+      "name": "百度文字识别",
+      "type": "ocr",
+      "client": "baidu",
+      "base_url": {
+        "default": "https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic"
+      },
+      "api_key_env": ["BAIDU_OCR_API_KEY", "BAIDU_OCR_SECRET_KEY"],
+      "models": [
+        {"id": "baidu-ocr-general", "default": true}
+      ]
+    },
+    {
+      "id": "paddle_ocr",
+      "name": "PaddleOCR (本地)",
+      "type": "ocr",
+      "client": "paddle",
+      "requires_gpu": false,
+      "api_key_env": [],
+      "models": [
+        {"id": "paddleocr-ch", "default": true}
+      ]
+    },
+    {
+      "id": "tesseract_ocr",
+      "name": "Tesseract OCR (本地)",
+      "type": "ocr",
+      "client": "tesseract",
+      "requires_gpu": false,
+      "api_key_env": [],
+      "models": [
+        {"id": "tesseract-chi-sim", "default": true}
+      ]
+    },
+    {
+      "id": "baidu_tts",
+      "name": "百度语音合成",
+      "type": "tts",
+      "client": "baidu",
+      "base_url": {
+        "default": "https://tsn.baidu.com/text2audio"
+      },
+      "api_key_env": ["BAIDU_API_KEY", "BAIDU_SECRET_KEY"],
+      "models": [
+        {"id": "baidu-tts-female", "per": 0, "default": true},
+        {"id": "baidu-tts-male", "per": 1},
+        {"id": "baidu-tts-emotional-male", "per": 3},
+        {"id": "baidu-tts-emotional-female", "per": 4}
+      ]
+    },
+    {
+      "id": "system_tts",
+      "name": "系统语音合成",
+      "type": "tts",
+      "client": "local",
+      "api_key_env": [],
+      "models": [
+        {"id": "system-tts", "default": true}
+      ]
+    }
+  ],
+  "defaults": {
+    "llm": "aliyun_chat",
+    "vl": "aliyun_vl",
+    "asr": "baidu_asr",
+    "ocr": "baidu_ocr",
+    "tts": "baidu_tts",
+    "system_prompt": "你是一个有用的助手。",
+    "model_fallback_order": [
+      "aliyun_chat",
+      "deepseek",
+      "doubao",
+      "local_qwen3"
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "files": [
+    {
+      "id": "4b135581",
+      "name": "故障诊断（测试）.pdf",
+      "type": "文档",
+      "size": "9.4MB",
+      "chars": 19406,
+      "recall": 8,
+      "date": "2026-05-31 22:33:46",
+      "enabled": true,
+      "status": "completed",
+      "batch": "202605312233",
+      "chunks": 39
+    }
+  ],
+  "last_updated": "2026-05-31T15:03:16.612945Z",
+  "index_built": true,
+  "total_chunks": 39
+}

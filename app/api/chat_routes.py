@@ -7,6 +7,11 @@ from flask import Blueprint, Response, jsonify, request, stream_with_context
 from .. import runtime
 from ..config import UPLOAD_DIR, ensure_dirs, get_system_prompt, load_llm_config
 from ..observability import get_logger
+from ..security.safety_rules import (
+    assess_risk,
+    build_safety_preamble,
+    build_safety_system_constraint,
+)
 from ..security.validation import safe_filename
 from ..services.history import append_history, get_session_file, read_history
 
@@ -103,6 +108,13 @@ def chat_stream():
         if kb_sources:
             system_prompt = (system_prompt or '') + CITATION_INSTRUCTION
 
+        # 安全硬规则：风险分类不依赖大模型；高风险问题先输出固定警示
+        risk = assess_risk(original_message or user_message)
+        if risk['level'] != 'none':
+            logger.info(f"[chat_stream] 安全风险评估: {risk['level']} {risk['categories']}")
+            system_prompt = (system_prompt or '') + build_safety_system_constraint(risk)
+        safety_preamble = build_safety_preamble(risk)
+
         enhanced_message = user_message
         detected_scenario = None
 
@@ -129,6 +141,10 @@ def chat_stream():
         def generate():
             full = []
             try:
+                # 高风险问题：固定安全警示先于模型输出（硬规则，模型不可覆盖）
+                if safety_preamble:
+                    full.append(safety_preamble)
+                    yield safety_preamble
                 for chunk in runtime.call_model_stream(
                     message=enhanced_message,
                     provider_id=provider_id,

@@ -7,7 +7,12 @@
 
 EXPECTED_RULES = {
     "/ GET",
+    "/api/agent/chat POST",
+    "/api/agent/tools GET",
     "/api/asr POST",
+    "/api/diagnosis/<session_id> GET",
+    "/api/diagnosis/reply POST",
+    "/api/diagnosis/start POST",
     "/api/chat POST",
     "/api/chat_stream POST",
     "/api/chat_with_file POST",

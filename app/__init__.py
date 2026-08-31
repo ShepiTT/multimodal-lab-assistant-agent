@@ -25,6 +25,7 @@ def create_app() -> Flask:
     # 注册各蓝图
     from .api import (
         admin_routes,
+        agent_routes,
         chat_routes,
         file_routes,
         ide_routes,
@@ -41,6 +42,7 @@ def create_app() -> Flask:
     app.register_blueprint(speech_routes.bp)
     app.register_blueprint(knowledge_routes.bp)
     app.register_blueprint(ide_routes.bp)
+    app.register_blueprint(agent_routes.bp)
     app.register_blueprint(health.bp)
 
     # Prompt 引擎自带的路由注册（外部模块，可选）

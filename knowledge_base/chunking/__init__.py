@@ -9,6 +9,7 @@
 4. 基于文档结构的分块 (Semantic Chunking) - 基于标题、段落等结构切分
 5. 混合分块 (Hybrid Chunking) - 结合文档结构和递归分割，保护代码块完整性
 6. 智能分块 (Smart Chunking) - 自动检测文档类型，选择最佳策略，支持重叠
+7. 父子分块 (Parent-Child Chunking) - 子块负责检索命中，父块负责生成上下文
 """
 from .Fixed_size_Chunking import FixedSizeChunker, fixed_size_chunk
 from .Sentence_Splitting import SentenceSplitter, sentence_split
@@ -16,6 +17,7 @@ from .Recursive_Chunking import RecursiveChunker, recursive_chunk
 from .Semantic_Chunking import SemanticChunker, semantic_chunk
 from .Hybrid_Chunking import HybridChunker, hybrid_chunk, Chunk
 from .Smart_Chunking import SmartChunker, smart_chunk
+from .Parent_Child_Chunking import ParentChildChunker
 
 __all__ = [
     # 固定大小分块
@@ -37,4 +39,6 @@ __all__ = [
     # 智能分块（推荐）
     'SmartChunker',
     'smart_chunk',
+    # 父子分块（RAG 推荐）
+    'ParentChildChunker',
 ]

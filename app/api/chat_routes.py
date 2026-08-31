@@ -13,6 +13,17 @@ from ..services.history import append_history, get_session_file, read_history
 bp = Blueprint('chat_routes', __name__)
 logger = get_logger()
 
+# 携带知识库参考资料时，强制模型标注依据来源，抑制无依据回答
+CITATION_INSTRUCTION = """
+
+【引用要求】本次提问附带了知识库参考资料。回答时必须遵守：
+1. 优先依据参考资料回答；资料未覆盖的内容如需补充，必须明确标注"（以下为通用建议，非知识库内容）"；
+2. 回答末尾用如下格式列出依据来源：
+   > 来源：《文档名》
+   > 章节：命中的章节标题（若有）
+   > 依据：所引用的关键原文（摘录）
+3. 如果参考资料与问题无关或不足以回答，直接说明"知识库中未找到相关依据"，不要编造。"""
+
 
 @bp.route('/api/chat', methods=['POST'])
 def chat():
@@ -87,6 +98,10 @@ def chat_stream():
             return jsonify({'error': 'No message provided'}), 400
         if runtime.call_model_stream is None:
             return jsonify({'error': '后端未正确加载 llm_runner，请检查导入'}), 500
+
+        # 带知识库参考资料的请求：追加引用来源约束
+        if kb_sources:
+            system_prompt = (system_prompt or '') + CITATION_INSTRUCTION
 
         enhanced_message = user_message
         detected_scenario = None

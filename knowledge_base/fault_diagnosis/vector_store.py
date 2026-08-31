@@ -237,6 +237,13 @@ class FaultDiagnosisKnowledgeBase:
                 respect_sentences=True,
                 preserve_code_blocks=True
             )
+        elif self.chunk_method == "parent_child":
+            from chunking.Parent_Child_Chunking import ParentChildChunker
+            # 父子分块：子块负责检索命中，父块负责生成上下文
+            return ParentChildChunker(
+                child_size=min(self.chunk_size, 400),
+                child_overlap=50,
+            )
         else:  # semantic 或其他默认使用语义分块
             from chunking.Semantic_Chunking import SemanticChunker
             return SemanticChunker(max_chunk_size=self.chunk_size)
@@ -400,12 +407,17 @@ class FaultDiagnosisKnowledgeBase:
                 log(f"         预览: {chunk_preview}...")
                 
                 all_chunks.append(chunk_content)
-                all_metadata.append({
+                chunk_meta = {
                     'source': filename,
                     'chunk_id': chunk.get('id', 0),
                     'title': chunk_title,
                     'length': chunk_len
-                })
+                }
+                # 父子分块：随索引持久化父块信息，供检索时上下文扩展使用
+                if 'parent_id' in chunk:
+                    chunk_meta['parent_id'] = chunk['parent_id']
+                    chunk_meta['parent_content'] = chunk.get('parent_content', '')
+                all_metadata.append(chunk_meta)
                 
                 # 保存详细信息
                 file_stat['chunks'].append({

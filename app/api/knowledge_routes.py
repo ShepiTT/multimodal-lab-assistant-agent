@@ -224,7 +224,13 @@ def kb_build_index():
 
 @bp.route('/api/kb/search', methods=['POST'])
 def kb_search():
-    """知识库检索"""
+    """知识库检索。
+
+    mode 参数（默认 hybrid）：
+    - hybrid: Dense(20) + BM25(20) → RRF 融合(10) →（可选精排）→ top_k，
+      结果带父块上下文（context 字段）与各路得分明细（retrieval 字段）
+    - dense: 旧版链路（向量召回 + 关键词加分重排），保留用于回退与消融对比
+    """
     if not runtime.KB_AVAILABLE:
         return jsonify({"success": False, "error": "知识库模块未加载"}), 500
 
@@ -234,9 +240,13 @@ def kb_search():
     top_k = int(data.get('top_k', 5))
     threshold = float(data.get('threshold', 0.0))
     use_rewrite = data.get('use_rewrite', False)  # 是否启用查询改写
+    mode = data.get('mode', 'hybrid')
+    use_rerank = bool(data.get('rerank', True))
 
     if not query:
         return jsonify({"success": False, "error": "查询内容不能为空"}), 400
+    if mode not in ('hybrid', 'dense'):
+        return jsonify({"success": False, "error": f"无效的检索模式: {mode}"}), 400
 
     kb = get_kb_instance(kb_type)
     if not kb:
@@ -257,7 +267,14 @@ def kb_search():
             except Exception as e:
                 logger.warning(f"[KB] 查询改写失败，使用原查询: {e}")
 
-        results = kb.search(rewritten_query, top_k=top_k)
+        if mode == 'hybrid':
+            from ..retrieval import get_hybrid_searcher
+            searcher = get_hybrid_searcher(kb_type, kb)
+            results = searcher.search(rewritten_query, top_k=top_k, use_rerank=use_rerank)
+            # RRF 得分量纲与余弦相似度不同，threshold 仅对 dense 模式生效
+            threshold = 0.0
+        else:
+            results = kb.search(rewritten_query, top_k=top_k)
 
         # 过滤低于阈值的结果
         filtered_results = []
@@ -268,13 +285,19 @@ def kb_search():
                 source_file = r['metadata'].get('source', 'unknown')
                 recalled_files[source_file] = recalled_files.get(source_file, 0) + 1
 
-                filtered_results.append({
+                item = {
                     "content": r['document'],
                     "score": round(r['score'], 4),
                     "file": source_file,
                     "title": r['metadata'].get('title', ''),
                     "chunk_id": r['metadata'].get('chunk_id', 0)
-                })
+                }
+                # hybrid 模式附加：父块上下文与各路得分明细
+                if 'context' in r:
+                    item["context"] = r['context']
+                if 'retrieval' in r:
+                    item["retrieval"] = r['retrieval']
+                filtered_results.append(item)
 
         # 更新召回次数到 text.json
         if recalled_files:
@@ -288,7 +311,8 @@ def kb_search():
         response_data = {
             "success": True,
             "results": filtered_results,
-            "total": len(filtered_results)
+            "total": len(filtered_results),
+            "mode": mode
         }
 
         if use_rewrite and rewritten_query != query:
@@ -296,7 +320,7 @@ def kb_search():
 
         return jsonify(response_data)
     except Exception as e:
-        logger.error(f"[KB] 检索失败: {e}")
+        logger.error(f"[KB] 检索失败: {e}", exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 500
 
 

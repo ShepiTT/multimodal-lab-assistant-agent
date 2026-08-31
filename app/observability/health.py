@@ -2,6 +2,7 @@
 from flask import Blueprint, jsonify
 
 from .. import runtime
+from ..retrieval import reranker
 from ..security import auth
 from ..services.sandbox import check_docker_running, check_piston_running
 
@@ -46,5 +47,6 @@ def health_capabilities():
         "web_search": runtime.WEB_SEARCH_AVAILABLE,
         "docker": docker_ok,
         "code_sandbox": piston_ok,
+        "reranker": reranker.is_available(),
         "admin_token_configured": bool(auth.ADMIN_TOKEN),
     })

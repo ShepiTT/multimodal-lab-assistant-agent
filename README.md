@@ -13,9 +13,10 @@
 - **📚 检索增强生成 (RAG) 知识库**
   - **智能文档解析**：支持 TXT、Markdown、PDF、DOCX、图片及视频等多种格式。
   - **OCR 与视觉提取**：集成百度 OCR、PaddleOCR、Tesseract 进行文本提取，支持视频关键帧截取。
-  - **智能文本切分 (Smart Chunking)**：基于文档结构（如 Markdown 标题）、代码块保护与句子边界的智能重叠切分。
-  - **高效向量检索**：基于 BGE-M3 模型进行文本嵌入（Embedding），使用 FAISS 构建高性能本地向量索引。
-  - **增强查询与重排**：内置用户 Query 改写机制与基于同义词/关键词的匹配加分重排（Keyword Boost）。
+  - **多策略文本切分**：智能重叠切分（Smart Chunking）与父子分块（Parent-Child：子块负责检索命中、父块负责生成上下文），代码块完整性保护。
+  - **混合检索管线**：Dense 向量召回（BGE + FAISS）与 BM25 精确召回双路并行，RRF 融合排序，可选 Cross-Encoder 精排（Reranker），检索结果附带父块上下文与各路得分明细。
+  - **增强查询与引用**：用户 Query 改写机制；带知识库参考的回答强制标注依据来源。
+  - **消融评测**：`scripts/eval_retrieval.py` 支持 dense / hybrid / hybrid+rerank 三种配置的 Recall@K 与耗时对比。
 
 - **🎤 语音交互闭环**
   - **语音识别 (ASR)**：支持百度 ASR、豆包 ASR 及本地 FunASR 模型，实现语音转文本。

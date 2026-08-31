@@ -43,7 +43,16 @@
 
 ```text
 .
-├── app.py                      # 后端主入口，路由注册与核心调度
+├── main.py                     # 应用入口（python main.py 启动）
+├── app/                        # 后端应用包（Application Factory + Blueprint）
+│   ├── __init__.py             # create_app 工厂：蓝图注册、统一错误处理
+│   ├── config.py               # 路径常量、环境变量、配置文件读写
+│   ├── runtime.py              # 可选组件的受保护导入与能力标志
+│   ├── api/                    # 路由层（chat/file/knowledge/speech/ide/admin/static）
+│   ├── services/               # 服务层（历史会话、知识库、沙箱、预加载）
+│   ├── security/               # 鉴权、上传校验、路径越界防护
+│   └── observability/          # 结构化日志、request_id、健康检查
+├── tests/                      # pytest 自动化测试（路由完整性 + 安全回归）
 ├── config/                     # 系统提示词与全局配置文件
 ├── models/                     # 模型接入层
 │   ├── ASR/                    # 语音识别接入模块
@@ -103,7 +112,7 @@ BAIDU_SECRET_KEY=your_baidu_secret
 直接运行主程序即可启动 Flask 服务：
 
 ```bash
-python app.py
+python main.py
 ```
 *提示：系统启动时会自动尝试拉起 Docker Desktop 及 Piston 容器以支持代码执行功能。*
 

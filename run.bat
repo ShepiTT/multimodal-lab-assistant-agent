@@ -16,6 +16,6 @@ if exist "venv\Scripts\activate.bat" (
 )
 
 REM 启动应用（会自动处理 Docker 和 Piston）
-python app.py
+python main.py
 
 pause

@@ -1,7 +1,7 @@
 """全局配置：路径常量、环境变量、模型与提示词配置文件读写。"""
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
@@ -50,7 +50,7 @@ def ensure_dirs():
 
 
 def timestamp():
-    return datetime.utcnow().isoformat() + "Z"
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"
 
 
 def resolve_api_key(raw_api_key: str, provider_id: str) -> str:

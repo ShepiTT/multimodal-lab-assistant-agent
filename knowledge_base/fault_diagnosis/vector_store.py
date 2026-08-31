@@ -10,9 +10,9 @@ from pathlib import Path
 
 import numpy as np
 
-# 设置环境变量
-os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # 使用第一块 GPU
+# 设置环境变量（HF_ENDPOINT 允许通过外部环境变量覆盖，镜像不可用时可切回官方源）
+os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
+os.environ.setdefault('CUDA_VISIBLE_DEVICES', '0')  # 使用第一块 GPU
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)

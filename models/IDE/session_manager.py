@@ -5,28 +5,34 @@
 
 import os
 import json
+import re
 import uuid
 import shutil
 from pathlib import Path
 from typing import Dict, Optional
 from datetime import datetime, timedelta
 
+# 会话 id 只允许字母数字、下划线和连字符，防止目录穿越
+_SESSION_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+
 
 class IDESessionManager:
     """IDE 会话管理器"""
-    
+
     def __init__(self, sessions_dir: str):
         """
         初始化会话管理器
-        
+
         Args:
             sessions_dir: 会话存储目录
         """
         self.sessions_dir = Path(sessions_dir)
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
-    
+
     def _get_session_dir(self, session_id: str) -> Path:
-        """获取会话目录"""
+        """获取会话目录（校验 id 合法性，防止路径越界）"""
+        if not session_id or not _SESSION_ID_RE.match(str(session_id)):
+            raise ValueError(f"非法的 session_id: {session_id!r}")
         return self.sessions_dir / session_id
     
     def _get_session_file(self, session_id: str) -> Path:

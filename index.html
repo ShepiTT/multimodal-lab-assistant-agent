@@ -3382,13 +3382,10 @@
                         
                         if (data.success && data.config && data.config[currentApiProvider]) {
                             const envConfig = data.config[currentApiProvider];
-                            // localStorage 优先，如果没有则使用 .env 的值
-                            if (!savedKey && envConfig.api_key) {
-                                savedKey = envConfig.api_key;
-                                // 显示遮罩的 API Key（前4位和后4位）
-                                if (savedKey.length > 8) {
-                                    apiKeyInput.placeholder = `来自 .env: ${savedKey.substring(0, 4)}...${savedKey.substring(savedKey.length - 4)}`;
-                                }
+                            // 后端出于安全考虑不再返回 API Key 明文；
+                            // 已在 .env 配置的密钥由后端自动使用，前端无需填写
+                            if (!savedKey && envConfig.has_config) {
+                                apiKeyInput.placeholder = '已在服务端 .env 配置，无需填写';
                             }
                             if (!savedBaseUrl && envConfig.base_url) {
                                 savedBaseUrl = envConfig.base_url;

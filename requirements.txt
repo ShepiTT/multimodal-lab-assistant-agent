@@ -1,33 +1,45 @@
 # Web 框架
-flask>=2.0.0
-werkzeug>=2.0.0
-flask-cors>=4.0.0
-flask-limiter>=3.3.0
+flask>=3.0,<4
+werkzeug>=3.0,<4
+flask-compress>=1.14,<2
+flask-cors>=4.0,<7
+flask-limiter>=3.3,<4
 
 # 大模型调用
-openai>=1.0.0
-python-dotenv>=1.0.0
-requests>=2.28.0
-httpx>=0.24.0
+openai>=1.0,<3
+python-dotenv>=1.0,<2
+requests>=2.28,<3
+httpx>=0.24,<1
 
 # 向量化和检索
-faiss-cpu>=1.7.4
-sentence-transformers>=2.2.0
-jieba>=0.42.1
+faiss-cpu>=1.7.4,<2
+sentence-transformers>=2.2,<6
+jieba>=0.42.1,<1
 
 # 文档解析
-python-docx>=0.8.11
-PyMuPDF>=1.23.0
-openpyxl>=3.0.0
+python-docx>=0.8.11,<2
+PyMuPDF>=1.23,<2
+pdfplumber>=0.10,<1
+openpyxl>=3.0,<4
+pillow>=10.0,<12
+pyyaml>=6.0,<7
 
 # 基础依赖
-numpy>=1.21.0
-torch>=2.0.0
-transformers>=4.30.0
+numpy>=1.21,<3
+torch>=2.0,<3
+transformers>=4.30,<5
 
-# 语音识别 (可选，本地 ASR)
+# 语音识别 (可选，本地 ASR；另需系统安装 ffmpeg)
 # funasr>=1.0.0
+# modelscope>=1.9.0
 
-# OCR (可选)
+# 火山引擎豆包 ASR (可选)
+# volcenginesdkarkruntime
+# websockets>=11.0
+
+# OCR (可选；pytesseract 另需系统安装 Tesseract)
 # paddleocr>=2.6.0
 # pytesseract>=0.3.10
+
+# 图像/视频解析 (可选，视频关键帧提取)
+# opencv-python>=4.8.0

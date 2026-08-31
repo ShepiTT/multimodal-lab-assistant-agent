@@ -322,6 +322,140 @@ LLM_CONFIG_FILE = BASE_DIR / "models" / "models_config.json"
 load_dotenv(BASE_DIR / ".env")
 
 
+# ==================== 安全基础设施 ====================
+import functools
+import re as _re
+
+# 管理接口 Token：设置后，管理接口必须携带 X-Admin-Token 请求头；
+# 未设置时仅允许本机（127.0.0.1）访问管理接口，避免局域网内任意访问者修改数据。
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "").strip()
+
+_SESSION_ID_RE = _re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+
+# 各类文件的魔数（文件头），用于校验真实类型与扩展名一致
+_MAGIC_SIGNATURES = {
+    '.pdf': [b'%PDF'],
+    '.png': [b'\x89PNG'],
+    '.jpg': [b'\xff\xd8\xff'],
+    '.jpeg': [b'\xff\xd8\xff'],
+    '.bmp': [b'BM'],
+    '.docx': [b'PK\x03\x04'],
+    '.xlsx': [b'PK\x03\x04'],
+    '.mp4': None,   # mp4 头部变体多（ftyp 偏移 4 字节），单独处理
+    '.avi': [b'RIFF'],
+}
+
+UPLOAD_SIZE_LIMITS = {
+    'document': 50 * 1024 * 1024,  # 50MB
+    'image': 10 * 1024 * 1024,     # 10MB
+    'video': 50 * 1024 * 1024,     # 50MB
+}
+
+UPLOAD_ALLOWED_EXTS = {'.docx', '.txt', '.pdf', '.md', '.html', '.csv', '.xlsx',
+                       '.jpg', '.jpeg', '.png', '.mp4', '.avi', '.mov', '.flv'}
+
+KB_UPLOAD_ALLOWED_EXTS = {'.docx', '.txt', '.pdf', '.md', '.csv', '.xlsx',
+                          '.jpg', '.jpeg', '.png'}
+
+
+def require_admin(func):
+    """管理接口鉴权装饰器。
+
+    - 配置了 ADMIN_TOKEN：请求必须携带匹配的 X-Admin-Token 头。
+    - 未配置 ADMIN_TOKEN：仅允许来自本机回环地址的请求（本地单人使用场景）。
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        if ADMIN_TOKEN:
+            provided = request.headers.get('X-Admin-Token', '')
+            if not provided or provided != ADMIN_TOKEN:
+                return jsonify({'error': '管理接口需要有效的 X-Admin-Token'}), 401
+        else:
+            remote = request.remote_addr or ''
+            if remote not in ('127.0.0.1', '::1', 'localhost'):
+                return jsonify({'error': '管理接口未配置 ADMIN_TOKEN，仅允许本机访问'}), 403
+        return func(*args, **kwargs)
+    return wrapper
+
+
+def resolve_kb_folder(kb_type: str):
+    """严格校验 kb_type，返回对应目录名；非法类型返回 None（防止路径拼接越界）。"""
+    return KB_TYPE_MAP.get(kb_type)
+
+
+def validate_session_id(session_id) -> bool:
+    """IDE / 会话 id 只允许字母数字、下划线和连字符，防止目录穿越。"""
+    return bool(session_id) and bool(_SESSION_ID_RE.match(str(session_id)))
+
+
+def get_ide_session_dir(session_id) -> Path:
+    """校验 session_id 后返回 IDE 会话目录；非法 id 抛 ValueError。"""
+    if not validate_session_id(session_id):
+        raise ValueError("非法的 session_id")
+    return DATA_DIR / "ide_sessions" / session_id
+
+
+def _sniff_matches(ext: str, header: bytes) -> bool:
+    """轻量文件头校验：已知类型必须匹配魔数；未登记的类型不拦截。"""
+    if ext == '.mp4':
+        return len(header) >= 8 and header[4:8] == b'ftyp'
+    sigs = _MAGIC_SIGNATURES.get(ext)
+    if sigs is None:
+        return True
+    return any(header.startswith(sig) for sig in sigs)
+
+
+def upload_category(ext: str) -> str:
+    if ext in {'.jpg', '.jpeg', '.png', '.bmp'}:
+        return 'image'
+    if ext in {'.mp4', '.avi', '.mov', '.flv'}:
+        return 'video'
+    return 'document'
+
+
+def validate_and_save_upload(file, dest_dir: Path, allowed_exts=None):
+    """统一的上传校验与保存。
+
+    校验项：扩展名白名单、大小限制、文件头（魔数）、路径越界。
+    存储名 = 清洗后的原文件名主干 + 8 位随机后缀，避免覆盖与猜测。
+    返回 (safe_name, save_path, size, category)；校验失败抛 ValueError。
+    """
+    allowed = allowed_exts if allowed_exts is not None else UPLOAD_ALLOWED_EXTS
+    original_filename = file.filename or ""
+    ext = Path(original_filename).suffix.lower()
+
+    if ext not in allowed:
+        raise ValueError(f"不支持的文件类型: {ext or '(无扩展名)'}")
+
+    file.seek(0, 2)
+    file_size = file.tell()
+    file.seek(0)
+
+    category = upload_category(ext)
+    limit = UPLOAD_SIZE_LIMITS[category]
+    if file_size > limit:
+        raise ValueError(f"文件大小超过限制 ({limit / (1024 * 1024):.0f}MB)")
+    if file_size == 0:
+        raise ValueError("文件内容为空")
+
+    header = file.read(16)
+    file.seek(0)
+    if not _sniff_matches(ext, header):
+        raise ValueError(f"文件内容与扩展名 {ext} 不匹配")
+
+    stem = safe_filename(Path(original_filename).stem) or "file"
+    safe_name = f"{stem}_{uuid.uuid4().hex[:8]}{ext}"
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    save_path = (dest_dir / safe_name).resolve()
+    if dest_dir.resolve() not in save_path.parents:
+        raise ValueError("非法的存储路径")
+
+    file.save(save_path)
+    return safe_name, save_path, file_size, category
+# ==================== 结束 安全基础设施 ====================
+
+
 def resolve_api_key(raw_api_key: str, provider_id: str) -> str:
     """根据 provider 尝试从环境变量回落获取 API Key。"""
     if raw_api_key:
@@ -776,6 +910,7 @@ def api_get_system_prompt():
 
 
 @app.route('/api/system_prompt', methods=['POST'])
+@require_admin
 def api_set_system_prompt():
     """设置系统提示词"""
     data = request.get_json(force=True, silent=True) or {}
@@ -792,45 +927,43 @@ def api_set_system_prompt():
 
 @app.route('/api/env/config', methods=['GET'])
 def api_get_env_config():
-    """获取 .env 文件中的 API 配置"""
+    """获取各厂商 API 的配置状态。
+
+    安全约束：绝不返回 API Key 明文，只返回是否已配置（has_config）
+    以及非敏感的 base_url。密钥仅保存在服务端环境变量中。
+    """
     try:
-        # 从环境变量读取配置
         config = {
             'qwen': {
-                'api_key': os.getenv('ALI_API_KEY', ''),
                 'base_url': os.getenv('ALI_BASE_URL', ''),
                 'has_config': bool(os.getenv('ALI_API_KEY'))
             },
             'openai': {
-                'api_key': os.getenv('OPENAI_API_KEY', ''),
                 'base_url': os.getenv('OPENAI_BASE_URL', ''),
                 'has_config': bool(os.getenv('OPENAI_API_KEY'))
             },
             'volcengine': {
-                'api_key': os.getenv('ARK_API_KEY', ''),
                 'base_url': os.getenv('APK_BASE_URL', ''),
                 'has_config': bool(os.getenv('ARK_API_KEY'))
             },
             'deepseek': {
-                'api_key': os.getenv('DEEPSEEK_API_KEY', ''),
                 'base_url': os.getenv('DEEPSEEK_BASE_URL', ''),
                 'has_config': bool(os.getenv('DEEPSEEK_API_KEY'))
             },
             'local': {
-                'api_key': os.getenv('LOCAL_API_KEY', ''),
                 'base_url': os.getenv('LOCAL_LLM_BASE_URL', ''),
                 'has_config': bool(os.getenv('LOCAL_LLM_BASE_URL'))
             }
         }
-        
+
         return jsonify({
             'success': True,
             'config': config
         })
-        
+
     except Exception as e:
         print(f"读取环境配置失败: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': '读取环境配置失败'}), 500
 
 
 @app.route('/api/web_search', methods=['POST'])
@@ -932,14 +1065,18 @@ def api_get_scenario_prompt():
 
 
 @app.route('/api/scenario/prompt', methods=['POST'])
+@require_admin
 def api_save_scenario_prompt():
     """保存指定场景的提示词"""
     data = request.get_json(force=True, silent=True) or {}
     scenario = data.get('scenario')
     prompt = data.get('prompt')
-    
+
     if not scenario or prompt is None:
         return jsonify({'error': '缺少必要参数'}), 400
+
+    if scenario not in ('operation_guide', 'fault_diagnosis', 'safety_regulation', 'code_debug'):
+        return jsonify({'error': '无效的场景类型'}), 400
     
     try:
         # 保存到配置文件
@@ -1040,51 +1177,14 @@ def upload():
     """上传文件接口，支持文档/图片/视频"""
     if 'file' not in request.files:
         return jsonify({"error": "缺少上传文件"}), 400
-    
-    file = request.files['file']
-    original_filename = file.filename or ""
-    ext = Path(original_filename).suffix.lower()
-    
-    # 验证文件类型
-    allowed_exts = {'.docx', '.txt', '.pdf', '.md', '.html', '.csv', '.xlsx',
-                    '.jpg', '.jpeg', '.png', '.mp4', '.avi', '.mov', '.flv'}
-    if ext not in allowed_exts:
-        return jsonify({"error": f"不支持的文件类型: {ext}"}), 400
-    
-    # 保留原始文件名（支持中文）
-    safe_name = safe_filename(original_filename)
-    if not safe_name:
-        safe_name = f"file_{uuid.uuid4().hex}{ext}"
-    
+
     ensure_dirs()
-    save_path = UPLOAD_DIR / safe_name
-    
-    # 检查文件大小
-    file.seek(0, 2)  # 移到文件末尾
-    file_size = file.tell()
-    file.seek(0)  # 移回开头
-    
-    # 大小限制
-    size_limits = {
-        'document': 50 * 1024 * 1024,  # 50MB
-        'image': 10 * 1024 * 1024,     # 10MB
-        'video': 50 * 1024 * 1024,     # 50MB
-    }
-    
-    if ext in {'.jpg', '.jpeg', '.png'}:
-        category = 'image'
-    elif ext in {'.mp4', '.avi', '.mov', '.flv'}:
-        category = 'video'
-    else:
-        category = 'document'
-    
-    if file_size > size_limits[category]:
-        limit_mb = size_limits[category] / (1024 * 1024)
-        return jsonify({"error": f"文件大小超过限制 ({limit_mb}MB)"}), 400
-    
-    # 保存文件
-    file.save(save_path)
-    
+    try:
+        safe_name, save_path, file_size, category = validate_and_save_upload(
+            request.files['file'], UPLOAD_DIR)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
     file_url = f"/uploads/{safe_name}"
     return jsonify({
         "success": True,
@@ -1097,27 +1197,21 @@ def upload():
 
 @app.route('/api/upload_and_parse', methods=['POST'])
 def upload_and_parse():
-    """上传并解析文件，返回解析后的内容"""
+    """上传并解析文件，返回解析后的内容（与 /api/upload 使用同一套校验）"""
     if 'file' not in request.files:
         return jsonify({"error": "缺少上传文件"}), 400
-    
-    file = request.files['file']
-    original_filename = file.filename or ""
-    ext = Path(original_filename).suffix.lower()
-    
-    # 保留原始文件名（支持中文）
-    safe_name = safe_filename(original_filename)
-    if not safe_name:
-        safe_name = f"file_{uuid.uuid4().hex}{ext}"
-    
+
     ensure_dirs()
-    save_path = UPLOAD_DIR / safe_name
-    file.save(save_path)
-    
+    try:
+        safe_name, save_path, file_size, category = validate_and_save_upload(
+            request.files['file'], UPLOAD_DIR)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
     # 解析文件
     if parse_file is None:
         return jsonify({"error": "解析服务未加载"}), 500
-    
+
     result = parse_file(str(save_path))
     
     if not result['success']:
@@ -1398,8 +1492,10 @@ def get_kb_instance(kb_type: str):
     """获取或创建知识库实例"""
     if not KB_AVAILABLE:
         return None
-    
-    kb_folder = KB_TYPE_MAP.get(kb_type, kb_type)
+
+    kb_folder = resolve_kb_folder(kb_type)
+    if kb_folder is None:
+        return None
     kb_dir = KB_BASE_DIR / kb_folder
     index_file = kb_dir / "index" / "index.pkl"
     
@@ -1435,7 +1531,9 @@ def get_kb_instance(kb_type: str):
 
 def load_kb_json(kb_type: str) -> Dict:
     """加载知识库的 text.json 配置文件"""
-    kb_folder = KB_TYPE_MAP.get(kb_type, kb_type)
+    kb_folder = resolve_kb_folder(kb_type)
+    if kb_folder is None:
+        return {"files": [], "last_updated": None, "index_built": False, "total_chunks": 0}
     json_path = KB_BASE_DIR / kb_folder / "data" / "text.json"
     
     if json_path.exists():
@@ -1450,7 +1548,9 @@ def load_kb_json(kb_type: str) -> Dict:
 
 def save_kb_json(kb_type: str, data: Dict):
     """保存知识库的 text.json 配置文件"""
-    kb_folder = KB_TYPE_MAP.get(kb_type, kb_type)
+    kb_folder = resolve_kb_folder(kb_type)
+    if kb_folder is None:
+        raise ValueError(f"无效的知识库类型: {kb_type}")
     kb_data_dir = KB_BASE_DIR / kb_folder / "data"
     kb_data_dir.mkdir(parents=True, exist_ok=True)
     json_path = kb_data_dir / "text.json"
@@ -1464,7 +1564,9 @@ def save_kb_json(kb_type: str, data: Dict):
 def kb_list_files():
     """获取知识库文件列表，从 text.json 读取"""
     kb_type = request.args.get('type', 'guide')
-    kb_folder = KB_TYPE_MAP.get(kb_type, kb_type)
+    kb_folder = resolve_kb_folder(kb_type)
+    if kb_folder is None:
+        return jsonify({"success": False, "error": f"无效的知识库类型: {kb_type}"}), 400
     kb_data_dir = KB_BASE_DIR / kb_folder / "data"
     
     if not kb_data_dir.exists():
@@ -1529,35 +1631,36 @@ def kb_list_files():
 
 
 @app.route('/api/kb/upload', methods=['POST'])
+@require_admin
 def kb_upload_files():
     """上传文件到知识库"""
     kb_type = request.form.get('kb_type', 'guide')
-    kb_folder = KB_TYPE_MAP.get(kb_type, kb_type)
+    kb_folder = resolve_kb_folder(kb_type)
+    if kb_folder is None:
+        return jsonify({"success": False, "error": f"无效的知识库类型: {kb_type}"}), 400
     kb_data_dir = KB_BASE_DIR / kb_folder / "data"
     kb_data_dir.mkdir(parents=True, exist_ok=True)
-    
+
     files = request.files.getlist('files')
     if not files:
         return jsonify({"success": False, "error": "没有上传文件"}), 400
-    
+
     # 加载现有的 text.json
     kb_data = load_kb_json(kb_type)
     existing_files = {f['name']: f for f in kb_data.get('files', [])}
-    
+
     uploaded = []
+    errors = []
     for file in files:
         if file.filename:
-            # 保留中文文件名，只替换危险字符
-            original_name = file.filename
-            # 移除路径分隔符和其他危险字符
-            safe_name = original_name.replace('/', '_').replace('\\', '_').replace('..', '_')
-            safe_name = safe_name.strip()
-            if not safe_name:
-                safe_name = f"file_{uuid.uuid4().hex}{Path(original_name).suffix}"
-            save_path = kb_data_dir / safe_name
-            file.save(save_path)
+            try:
+                safe_name, save_path, _, _ = validate_and_save_upload(
+                    file, kb_data_dir, allowed_exts=KB_UPLOAD_ALLOWED_EXTS)
+            except ValueError as e:
+                errors.append(f"{file.filename}: {e}")
+                continue
             uploaded.append(safe_name)
-            
+
             # 添加到 text.json
             stat = save_path.stat()
             if safe_name not in existing_files:
@@ -1578,22 +1681,28 @@ def kb_upload_files():
     kb_data['files'] = list(existing_files.values())
     kb_data['index_built'] = False  # 上传新文件后需要重新构建索引
     save_kb_json(kb_type, kb_data)
-    
-    return jsonify({"success": True, "uploaded": uploaded, "message": f"已上传 {len(uploaded)} 个文件"})
+
+    resp = {"success": True, "uploaded": uploaded, "message": f"已上传 {len(uploaded)} 个文件"}
+    if errors:
+        resp["errors"] = errors
+    return jsonify(resp)
 
 
 @app.route('/api/kb/build', methods=['POST'])
+@require_admin
 def kb_build_index():
     """构建知识库索引"""
     if not KB_AVAILABLE:
         return jsonify({"success": False, "error": "知识库模块未加载"}), 500
-    
+
     data = request.get_json(force=True, silent=True) or {}
     kb_type = data.get('kb_type', 'guide')
     chunk_method = data.get('chunk_method', 'smart')  # 默认使用智能切分
     chunk_size = int(data.get('chunk_size', 500))
-    
-    kb_folder = KB_TYPE_MAP.get(kb_type, kb_type)
+
+    kb_folder = resolve_kb_folder(kb_type)
+    if kb_folder is None:
+        return jsonify({"success": False, "error": f"无效的知识库类型: {kb_type}"}), 400
     kb_dir = KB_BASE_DIR / kb_folder
     
     try:
@@ -1757,7 +1866,9 @@ def kb_search():
 def kb_status():
     """获取知识库状态"""
     kb_type = request.args.get('type', 'guide')
-    kb_folder = KB_TYPE_MAP.get(kb_type, kb_type)
+    kb_folder = resolve_kb_folder(kb_type)
+    if kb_folder is None:
+        return jsonify({"success": False, "error": f"无效的知识库类型: {kb_type}"}), 400
     kb_dir = KB_BASE_DIR / kb_folder
     index_dir = kb_dir / "index"
     index_file = index_dir / "index.pkl"
@@ -1805,19 +1916,27 @@ def kb_status():
 
 
 @app.route('/api/kb/delete', methods=['POST'])
+@require_admin
 def kb_delete_file():
     """删除知识库文件"""
     data = request.get_json(force=True, silent=True) or {}
     kb_type = data.get('kb_type', 'guide')
     filename = data.get('filename', '')
-    
+
     if not filename:
         return jsonify({"success": False, "error": "文件名不能为空"}), 400
-    
-    kb_folder = KB_TYPE_MAP.get(kb_type, kb_type)
+
+    kb_folder = resolve_kb_folder(kb_type)
+    if kb_folder is None:
+        return jsonify({"success": False, "error": f"无效的知识库类型: {kb_type}"}), 400
     kb_dir = KB_BASE_DIR / kb_folder
-    file_path = kb_dir / "data" / filename
-    
+
+    # 路径越界防护：只允许删除 data 目录内的直接文件
+    kb_data_dir = (kb_dir / "data").resolve()
+    file_path = (kb_data_dir / filename).resolve()
+    if file_path.parent != kb_data_dir:
+        return jsonify({"success": False, "error": "非法的文件名"}), 400
+
     if file_path.exists():
         file_path.unlink()
         
@@ -1853,6 +1972,7 @@ def kb_delete_file():
 
 
 @app.route('/api/kb/clear_cache', methods=['POST'])
+@require_admin
 def kb_clear_cache():
     """清除知识库缓存"""
     data = request.get_json(force=True, silent=True) or {}
@@ -2148,7 +2268,10 @@ def ide_list_files():
             return jsonify({'error': '缺少 session_id'}), 400
         
         # 获取会话目录
-        session_dir = DATA_DIR / "ide_sessions" / session_id
+        try:
+            session_dir = get_ide_session_dir(session_id)
+        except ValueError:
+            return jsonify({'error': '非法的 session_id'}), 400
         file_manager = FileManager(str(session_dir))
         
         result = file_manager.list_files()
@@ -2176,7 +2299,10 @@ def ide_create_file():
             return jsonify({'error': '缺少文件名'}), 400
         
         # 获取会话目录
-        session_dir = DATA_DIR / "ide_sessions" / session_id
+        try:
+            session_dir = get_ide_session_dir(session_id)
+        except ValueError:
+            return jsonify({'error': '非法的 session_id'}), 400
         file_manager = FileManager(str(session_dir))
         
         result = file_manager.create_file(filename, content)
@@ -2198,7 +2324,10 @@ def ide_read_file(filename):
             return jsonify({'error': '缺少 session_id'}), 400
         
         # 获取会话目录
-        session_dir = DATA_DIR / "ide_sessions" / session_id
+        try:
+            session_dir = get_ide_session_dir(session_id)
+        except ValueError:
+            return jsonify({'error': '非法的 session_id'}), 400
         file_manager = FileManager(str(session_dir))
         
         result = file_manager.read_file(filename)
@@ -2223,7 +2352,10 @@ def ide_update_file(filename):
             return jsonify({'error': '缺少 session_id'}), 400
         
         # 获取会话目录
-        session_dir = DATA_DIR / "ide_sessions" / session_id
+        try:
+            session_dir = get_ide_session_dir(session_id)
+        except ValueError:
+            return jsonify({'error': '非法的 session_id'}), 400
         file_manager = FileManager(str(session_dir))
         
         result = file_manager.update_file(filename, content)
@@ -2245,7 +2377,10 @@ def ide_delete_file(filename):
             return jsonify({'error': '缺少 session_id'}), 400
         
         # 获取会话目录
-        session_dir = DATA_DIR / "ide_sessions" / session_id
+        try:
+            session_dir = get_ide_session_dir(session_id)
+        except ValueError:
+            return jsonify({'error': '非法的 session_id'}), 400
         file_manager = FileManager(str(session_dir))
         
         result = file_manager.delete_file(filename)
@@ -2273,7 +2408,10 @@ def ide_rename_file():
             return jsonify({'error': '缺少文件名'}), 400
         
         # 获取会话目录
-        session_dir = DATA_DIR / "ide_sessions" / session_id
+        try:
+            session_dir = get_ide_session_dir(session_id)
+        except ValueError:
+            return jsonify({'error': '非法的 session_id'}), 400
         file_manager = FileManager(str(session_dir))
         
         result = file_manager.rename_file(old_filename, new_filename)
@@ -2338,21 +2476,86 @@ def ide_delete_session(session_id):
         return jsonify({'error': str(e)}), 500
 
 
+# ==================== 健康检查接口 ====================
+
+@app.route('/health/live', methods=['GET'])
+def health_live():
+    """存活探针：进程在跑就返回 200。"""
+    return jsonify({"status": "ok"})
+
+
+@app.route('/health/ready', methods=['GET'])
+def health_ready():
+    """就绪探针：核心问答链路（LLM 调用）可用才算就绪。"""
+    ready = call_model_stream is not None
+    return jsonify({
+        "status": "ready" if ready else "not_ready",
+        "llm_runner": call_model_stream is not None,
+    }), (200 if ready else 503)
+
+
+@app.route('/health/capabilities', methods=['GET'])
+def health_capabilities():
+    """能力清单：明确显示各子系统是否可用，避免"页面能开但核心功能失效"。"""
+    docker_ok = False
+    piston_ok = False
+    try:
+        docker_ok = check_docker_running()
+        if docker_ok:
+            piston_ok = check_piston_running()
+    except Exception:
+        pass
+
+    return jsonify({
+        "llm": call_model_stream is not None,
+        "rag": KB_AVAILABLE,
+        "prompt_engine": PROMPT_ENGINE_AVAILABLE,
+        "asr": asr_recognize is not None,
+        "ocr": ocr_recognize is not None,
+        "tts": tts_synthesize is not None,
+        "web_search": WEB_SEARCH_AVAILABLE,
+        "docker": docker_ok,
+        "code_sandbox": piston_ok,
+        "admin_token_configured": bool(ADMIN_TOKEN),
+    })
+
+# ==================== 结束 健康检查接口 ====================
+
+
+def _env_flag(name: str, default: str = "false") -> bool:
+    return os.environ.get(name, default).lower() in ("true", "1", "yes")
+
+
 # 环境变量控制是否预加载多模态模型
-PRELOAD_VL = os.environ.get("PRELOAD_VL", "false").lower() in ("true", "1", "yes")
+PRELOAD_VL = _env_flag("PRELOAD_VL")
 
 
 if __name__ == '__main__':
-    # 初始化 Docker 和 Piston
-    try:
-        initialize_docker_and_piston()
-    except Exception as e:
-        print(f"⚠️  初始化 Docker/Piston 时出错: {e}")
-        print("   应用将继续启动，但代码执行功能可能不可用")
-    
-    # 支持通过环境变量调整监听地址/端口，避免端口被占用时启动失败
-    host = os.environ.get("FLASK_HOST", "0.0.0.0")
+    # Docker/Piston 自动启动可通过环境变量关闭（AUTO_START_DOCKER=false），
+    # 避免代码沙箱不可用时拖慢/阻塞 Web 服务启动
+    if _env_flag("AUTO_START_DOCKER", "true"):
+        try:
+            initialize_docker_and_piston()
+        except Exception as e:
+            print(f"⚠️  初始化 Docker/Piston 时出错: {e}")
+            print("   应用将继续启动，但代码执行功能可能不可用")
+    else:
+        print("[info] AUTO_START_DOCKER=false，跳过 Docker/Piston 初始化")
+
+    # 安全默认值：只监听本机。需要局域网访问时显式设置 FLASK_HOST=0.0.0.0
+    host = os.environ.get("FLASK_HOST", "127.0.0.1")
     port = int(os.environ.get("FLASK_PORT", "5000"))
+    # debug 由环境变量控制，默认关闭（debug 模式会暴露交互式调试器，存在远程执行风险）
+    debug = _env_flag("FLASK_DEBUG")
+
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        if not ADMIN_TOKEN:
+            print("⚠️  警告：正在监听非本机地址且未配置 ADMIN_TOKEN，")
+            print("   局域网内任何人都无法访问管理接口（将被 403 拒绝）。")
+            print("   如需远程管理，请在 .env 中设置 ADMIN_TOKEN。")
+        if debug:
+            print("⚠️  警告：debug 模式 + 非本机监听是高危组合，已强制关闭 debug")
+            debug = False
 
     # 预加载模型（多模态模型可选）
     preload_models(preload_vl=PRELOAD_VL)
@@ -2363,4 +2566,4 @@ if __name__ == '__main__':
     print(f"请在浏览器访问 http://{host}:{port}")
     print("="*60 + "\n")
     # Windows 上 debug 模式建议关闭 reloader，避免重复绑定端口
-    app.run(debug=True, host=host, port=port, use_reloader=False)
+    app.run(debug=debug, host=host, port=port, use_reloader=False)

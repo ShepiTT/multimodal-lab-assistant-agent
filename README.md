@@ -135,4 +135,4 @@ python main.py
 
 ## 📄 许可证
 
-本项目为学术与毕业设计研究用途开发。未经允许，请勿用于商业生产环境。
+本项目采用 [PolyForm Noncommercial License 1.0.0](LICENSE) 许可证。允许个人学习、研究、教学及非商业用途使用，禁止商业用途。详见 [LICENSE](LICENSE) 文件。
